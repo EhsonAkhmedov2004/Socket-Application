@@ -4,19 +4,22 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System;
+using ConsoleApp2.Help;
+using System.Linq;
+using static System.Console;
+
 
 
 //Let's start !.....
 
 
 
-AsynchronousSocketListener socket = new AsynchronousSocketListener();
-public class ArrConfig
+AsyncSocketListener socket = new AsyncSocketListener();
+
+public struct StateObject
 {
-    public string[] array = { };
-}
-public class StateObject
-{
+    public StateObject() { }
+
     public const int bufferSize = 1024;
 
     public byte[] buffer = new byte[bufferSize];
@@ -24,193 +27,84 @@ public class StateObject
     // Received data string.
     public StringBuilder sb = new StringBuilder();
 
-    // Client socket.
-    public Socket workSocket = null;
 
-    public ICollection<Socket> connections = new List<Socket>{};
+
     
 
 }
-
-
-/*
- * ArrayList connections =- new ArrayList(25);
-//when guy connects
-connections.add(socket) //this is the current socket
-
-for (int i = 0 ; i < connections.count; i++)
+class AsyncSocketListener
 {
-    Socket temp = (Socket) connectionsIdea;
-    temp.Send(byte[]);
-}
+    public Socket connectedUser            = null;
+    public ICollection<Socket> connections = new List<Socket> { };
+    public Help help                       = new Help();
+    
+  
 
-[/code]
- 
- 
- 
- */
+    internal AsyncSocketListener() {
 
-
-
-
-
-
-
-
-
-
-class AsynchronousSocketListener
-{
-    public StateObject STATEOBJECT = new StateObject();
-    public AsynchronousSocketListener() {
-
-        this.StartListening();
-    }
-    public static ManualResetEvent allDone = new ManualResetEvent(false);
-
-
-
-    /*    void Send(Socket listener, int bytes)
-        {
-            StateObject state = new StateObject();
-            byte[] bigData = Encoding.ASCII.GetBytes(Encoding.ASCII.GetString(state.buffer, 0, bytes));
-
-            listener.BeginSend(
-              bigData,
-              0,
-              bigData.Length,
-              0,
-              new AsyncCallback(SendCallback), listener);
-
-        }*/
-
-
-    /*
-        void SendCallback(IAsyncResult ar)
-        {
-            Socket listener = (Socket)ar.AsyncState;
-            int bytesSent = listener.EndSend(ar);
-
-            Console.WriteLine("{0} bytes were sent !...", bytesSent);
-
-
-
-        }*/
-
-    void Send(Socket handler, String data)
-    {
-        // Convert the string data to byte data using ASCII encoding.  
-        byte[] byteData = Encoding.ASCII.GetBytes(data);
-
-        // Begin sending the data to the remote device.  
-        handler.BeginSend(byteData, 0, byteData.Length, 0,
-            new AsyncCallback(SendCallback), handler);
+        StartListening();
     }
 
-    void SendCallback(IAsyncResult ar)
+    private static ManualResetEvent allDone = new ManualResetEvent(false);
+
+   
+
+    private void ReadCallback(IAsyncResult ar) 
     {
-        try
-        {
-            // Retrieve the socket from the state object.  
-            Socket handler = (Socket)ar.AsyncState;
 
-            // Complete sending the data to the remote device.  
-            int bytesSent = handler.EndSend(ar);
-            Console.WriteLine("Sent {0} bytes to client.", bytesSent);
-
-            handler.Shutdown(SocketShutdown.Both);
-            handler.Close();
-
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.ToString());
-        }
-    }
-
-    void ReadCallback(IAsyncResult ar) 
-    {
-        var ArrConfiguration = new ArrConfig();
-
-        string content = String.Empty;
-        StateObject state = (StateObject)ar.AsyncState;
-        Socket handler = state.workSocket;
-        
-
-        int bytesRead = handler.EndReceive(ar);
-        Console.WriteLine("READ DATA!....");
-
+        StateObject state         = (StateObject)ar.AsyncState;
+        int         bytesRead     = connectedUser.EndReceive(ar);
+          
         if (bytesRead > 0)
-        {    
-            var m = Encoding.ASCII.GetString(state.buffer, 0, bytesRead);
-      
-            state.sb.Append(m);
-            Console.WriteLine(m);
-            foreach(Socket client in state.connections)
-            {
-                client.Send(Encoding.ASCII.GetBytes(m));
-            }
+        {
+            var message = help.Frombyte(state.buffer, 0, bytesRead);
 
-            
-            /*foreach(Socket socket in state.connections)
-            {
+            WriteLine(message);
 
-                socket.Send(Encoding.ASCII.GetBytes("Message"));
-                Console.WriteLine("SENT");
-            }*/
+            connections.ToList().ForEach(cl => cl.Send(help.Fromstring(message)));
 
-     
-           handler.BeginReceive(state.buffer, 0, StateObject.bufferSize, 0,
-                    new AsyncCallback(ReadCallback), state);
+
+            connectedUser.BeginReceive(state.buffer,
+                                 0,
+                                 StateObject.bufferSize,
+                                 0,
+                                 new AsyncCallback(ReadCallback), state);
         }
 
     }
-    void AcceptCallback(IAsyncResult ar)
+    private void AcceptCallback(IAsyncResult ar)
     {
         allDone.Set();
-        Socket listener = (Socket)ar.AsyncState;
-        Socket handler = listener.EndAccept(ar);
 
-        StateObject s = new StateObject();
-        s.workSocket = handler;
-
-        s.connections = STATEOBJECT.connections;
-
-        
-        STATEOBJECT.workSocket = handler;
-        STATEOBJECT.connections.Add(handler);
-        handler.Send(Encoding.ASCII.GetBytes("WELCOME"));
-        Console.WriteLine(STATEOBJECT.connections.ToArray().Length);
+        Socket listener = (Socket)ar.AsyncState, handler = listener!.EndAccept(ar);
 
 
-      /*  if (STATEOBJECT.connections.ToArray().Length > 0)
-        {
-            foreach (Socket socket in STATEOBJECT.connections)
-            {
+        StateObject state = new StateObject();
 
-                socket.Send()
-            }
-        }*/
 
-        var message = Encoding.ASCII.GetBytes(Encoding.ASCII.GetString(STATEOBJECT.buffer));
+        connectedUser = handler;
+
+        connections.Add(connectedUser);
+
 
    
         
         handler.BeginReceive(
-            s.buffer,
+
+            state.buffer,
             0,
             StateObject.bufferSize,
             0,
             new AsyncCallback(ReadCallback),
-            s
+            state
+
             );
         
 
     }
-    void StartListening()
+    private void StartListening()
     {
         const string ip = "127.0.0.1";
-        Console.WriteLine(IPAddress.Parse(ip));
         const int port = 8000;
 
         IPEndPoint IPendpoint = new IPEndPoint(IPAddress.Parse(ip), port);
@@ -222,15 +116,16 @@ class AsynchronousSocketListener
         {
             listener.Bind(IPendpoint);
             listener.Listen(100);
+
             while (true)
             {
                 allDone.Reset();
 
-                Console.WriteLine("Waiting for connection .....");
+                WriteLine("Waiting for connection .....");
 
                 listener.BeginAccept(
-                    new AsyncCallback(AcceptCallback),
-                    listener);
+                         new AsyncCallback(AcceptCallback),
+                         listener);
 
                 allDone.WaitOne();
             }
